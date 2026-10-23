@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
+import swaggerUi from "swagger-ui-express";
+import { parse } from "yaml";
 import { pool } from "./db.js";
 import { boardsRouter } from "./routes/boards.js";
 import { membersRouter } from "./routes/members.js";
@@ -8,12 +11,18 @@ import { usersRouter } from "./routes/users.js";
 
 export const app = express();
 
+const openApiDocument = parse(
+  readFileSync(new URL("../openapi.yaml", import.meta.url), "utf8"),
+);
+
 app.use(express.json());
 
 app.get("/health", async (_req, res) => {
   const result = await pool.query("select now() as time");
   res.json({ status: "ok", dbTime: result.rows[0].time });
 });
+
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
 
 app.use("/users", usersRouter);
 app.use("/boards", boardsRouter);
