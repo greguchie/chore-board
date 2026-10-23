@@ -8,7 +8,8 @@
     "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "tsc",
     "start": "node --env-file=.env dist/index.js",
-    "migrate": "node --env-file=.env node_modules/.bin/node-pg-migrate"
+    "migrate": "node --env-file=.env node_modules/.bin/node-pg-migrate",
+    "test:api": "newman run postman/chore-board.postman_collection.json"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +20,7 @@
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
     "@types/swagger-ui-express": "^4.1.8",
+    "newman": "^6.2.3",
     "node-pg-migrate": "^9.0.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
