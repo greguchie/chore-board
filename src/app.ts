@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from "express";
 import swaggerUi from "swagger-ui-express";
 import { parse } from "yaml";
 import { pool } from "./db.js";
+import { authRouter } from "./routes/auth.js";
 import { boardsRouter } from "./routes/boards.js";
 import { membersRouter } from "./routes/members.js";
 import { tasksRouter } from "./routes/tasks.js";
@@ -23,7 +24,7 @@ app.get("/health", async (_req, res) => {
 });
 
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
-
+app.use("/auth", authRouter);
 app.use("/users", usersRouter);
 app.use("/boards", boardsRouter);
 app.use("/boards/:boardId/members", membersRouter);
