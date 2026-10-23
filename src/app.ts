@@ -2,6 +2,7 @@ import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { pool } from "./db.js";
 import { boardsRouter } from "./routes/boards.js";
+import { membersRouter } from "./routes/members.js";
 import { usersRouter } from "./routes/users.js";
 
 export const app = express();
@@ -15,6 +16,7 @@ app.get("/health", async (_req, res) => {
 
 app.use("/users", usersRouter);
 app.use("/boards", boardsRouter);
+app.use("/boards/:boardId/members", membersRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const { code, type } = err as { code?: string; type?: string };
