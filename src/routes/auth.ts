@@ -84,9 +84,8 @@ authRouter.post("/refresh", async (req, res) => {
     // FOR UPDATE locks this row so two simultaneous refreshes can't both win.
     const { rows } = await client.query(
       `SELECT id, user_id AS "userId", family_id AS "familyId",
-                revoked_at AS "revokedAt", replaced_by AS "replacedBy",
-                expires_at <= now() AS "expired"
-                revoked_at AS "revokedAt", expires_at <= now() AS "expired"
+              revoked_at AS "revokedAt", replaced_by AS "replacedBy",
+              expires_at <= now() AS "expired"
        FROM refresh_tokens
        WHERE token_hash = $1
        FOR UPDATE`,
