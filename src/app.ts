@@ -1,6 +1,7 @@
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { pool } from "./db.js";
+import { boardsRouter } from "./routes/boards.js";
 import { usersRouter } from "./routes/users.js";
 
 export const app = express();
@@ -13,6 +14,7 @@ app.get("/health", async (_req, res) => {
 });
 
 app.use("/users", usersRouter);
+app.use("/boards", boardsRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const { code, type } = err as { code?: string; type?: string };
@@ -24,7 +26,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     res.status(409).json({ error: "That value is already in use" });
     return;
   }
-  if (code === "23503") {
+  if (code === "23503" || code === "23001") {
     res.status(409).json({ error: "Conflicts with related data" });
     return;
   }
