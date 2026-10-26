@@ -23,6 +23,17 @@ const updateBoard = z
     message: "Provide at least one field to update",
   });
 
+const forbidden = { error: "Your role on this board doesn't allow this" };
+
+// The caller's role on a board, or null if they're not a member.
+async function getRole(boardId: string, userId: string): Promise<string | null> {
+  const { rows } = await pool.query(
+    "SELECT role FROM members WHERE board_id = $1 AND user_id = $2",
+    [boardId, userId],
+  );
+  return rows[0]?.role ?? null;
+}
+
 // The logged-in user becomes the owner. No ownerId in the body.
 boardsRouter.post("/", async (req, res) => {
   const parsed = createBoard.safeParse(req.body);
@@ -68,6 +79,7 @@ boardsRouter.get("/", async (_req, res) => {
   res.json(rows);
 });
 
+// Any member can view.
 boardsRouter.get("/:id", async (req, res) => {
   const params = idParams.safeParse(req.params);
   if (!params.success) {
@@ -88,11 +100,21 @@ boardsRouter.get("/:id", async (req, res) => {
   res.json(rows[0]);
 });
 
+// Owner or admin can edit.
 boardsRouter.patch("/:id", async (req, res) => {
   const params = idParams.safeParse(req.params);
   const body = updateBoard.safeParse(req.body);
   if (!params.success || !body.success) {
     res.status(400).json({ error: "Invalid input" });
+    return;
+  }
+  const role = await getRole(params.data.id, res.locals.userId);
+  if (!role) {
+    res.status(404).json({ error: "Board not found" });
+    return;
+  }
+  if (role !== "owner" && role !== "admin") {
+    res.status(403).json(forbidden);
     return;
   }
   const { name, description } = body.data;
@@ -102,34 +124,28 @@ boardsRouter.patch("/:id", async (req, res) => {
          description = COALESCE($3, b.description),
          updated_at = now()
      WHERE b.id = $1
-       AND EXISTS (SELECT 1 FROM members m
-                   WHERE m.board_id = b.id AND m.user_id = $4)
      RETURNING ${columns}`,
-    [params.data.id, name ?? null, description ?? null, res.locals.userId],
+    [params.data.id, name ?? null, description ?? null],
   );
-  if (rows.length === 0) {
-    res.status(404).json({ error: "Board not found" });
-    return;
-  }
   res.json(rows[0]);
 });
 
+// Only the owner can delete.
 boardsRouter.delete("/:id", async (req, res) => {
   const params = idParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Invalid board id" });
     return;
   }
-  const result = await pool.query(
-    `DELETE FROM boards AS b
-     WHERE b.id = $1
-       AND EXISTS (SELECT 1 FROM members m
-                   WHERE m.board_id = b.id AND m.user_id = $2)`,
-    [params.data.id, res.locals.userId],
-  );
-  if (result.rowCount === 0) {
+  const role = await getRole(params.data.id, res.locals.userId);
+  if (!role) {
     res.status(404).json({ error: "Board not found" });
     return;
   }
+  if (role !== "owner") {
+    res.status(403).json(forbidden);
+    return;
+  }
+  await pool.query("DELETE FROM boards WHERE id = $1", [params.data.id]);
   res.status(204).end();
 });

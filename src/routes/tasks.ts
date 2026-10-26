@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db.js";
+import { requireRole } from "../middleware/auth.js";
 
 export const tasksRouter = Router({ mergeParams: true });
 
@@ -184,7 +185,7 @@ tasksRouter.patch("/:taskId", async (req, res) => {
   res.json(rows[0]);
 });
 
-tasksRouter.delete("/:taskId", async (req, res) => {
+tasksRouter.delete("/:taskId", requireRole("owner", "admin"), async (req, res) => {
   const params = taskParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Invalid id" });
