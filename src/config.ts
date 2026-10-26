@@ -16,6 +16,10 @@ const envSchema = z.object({
     .min(32, "must be at least 32 characters (use: openssl rand -base64 48)"),
   ACCESS_TOKEN_TTL: z.string().default("15m"),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  // Rate limits (per IP address).
+  RATE_LIMIT_API_MAX: z.coerce.number().int().positive().default(300), // per 15 min
+  RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().positive().default(5), // failed, per 15 min
+  RATE_LIMIT_SIGNUP_MAX: z.coerce.number().int().positive().default(10), // per hour
 });
 
 const parsed = envSchema.safeParse(process.env);
