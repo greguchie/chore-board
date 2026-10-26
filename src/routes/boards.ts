@@ -9,12 +9,9 @@ const columns = `b.id, b.name, b.description, b.owner_id AS "ownerId",
 
 const idParams = z.object({ id: z.uuid() });
 
-const listQuery = z.object({ userId: z.uuid().optional() });
-
 const createBoard = z.object({
   name: z.string().trim().min(1).max(100),
   description: z.string().trim().max(500).optional(),
-  ownerId: z.uuid(),
 });
 
 const updateBoard = z
@@ -26,19 +23,15 @@ const updateBoard = z
     message: "Provide at least one field to update",
   });
 
+// The logged-in user becomes the owner. No ownerId in the body.
 boardsRouter.post("/", async (req, res) => {
   const parsed = createBoard.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
     return;
   }
-  const { name, description, ownerId } = parsed.data;
-
-  const owner = await pool.query("SELECT 1 FROM users WHERE id = $1", [ownerId]);
-  if (owner.rows.length === 0) {
-    res.status(404).json({ error: "Owner not found" });
-    return;
-  }
+  const { name, description } = parsed.data;
+  const ownerId: string = res.locals.userId;
 
   const client = await pool.connect();
   try {
@@ -53,7 +46,7 @@ boardsRouter.post("/", async (req, res) => {
       [rows[0].id, ownerId],
     );
     await client.query("COMMIT");
-    res.status(201).json(rows[0]);
+    res.status(201).json({ ...rows[0], myRole: "owner" });
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
@@ -62,21 +55,16 @@ boardsRouter.post("/", async (req, res) => {
   }
 });
 
-boardsRouter.get("/", async (req, res) => {
-  const query = listQuery.safeParse(req.query);
-  if (!query.success) {
-    res.status(400).json({ error: "Invalid userId" });
-    return;
-  }
-  const { userId } = query.data;
-  const { rows } = userId
-    ? await pool.query(
-        `SELECT ${columns} FROM boards b
-         JOIN members m ON m.board_id = b.id
-         WHERE m.user_id = $1 ORDER BY b.created_at`,
-        [userId],
-      )
-    : await pool.query(`SELECT ${columns} FROM boards b ORDER BY b.created_at`);
+// Only boards you belong to, with your role on each.
+boardsRouter.get("/", async (_req, res) => {
+  const { rows } = await pool.query(
+    `SELECT ${columns}, m.role AS "myRole"
+     FROM boards b
+     JOIN members m ON m.board_id = b.id
+     WHERE m.user_id = $1
+     ORDER BY b.created_at`,
+    [res.locals.userId],
+  );
   res.json(rows);
 });
 
@@ -87,8 +75,11 @@ boardsRouter.get("/:id", async (req, res) => {
     return;
   }
   const { rows } = await pool.query(
-    `SELECT ${columns} FROM boards b WHERE b.id = $1`,
-    [params.data.id],
+    `SELECT ${columns}, m.role AS "myRole"
+     FROM boards b
+     JOIN members m ON m.board_id = b.id AND m.user_id = $2
+     WHERE b.id = $1`,
+    [params.data.id, res.locals.userId],
   );
   if (rows.length === 0) {
     res.status(404).json({ error: "Board not found" });
@@ -111,8 +102,10 @@ boardsRouter.patch("/:id", async (req, res) => {
          description = COALESCE($3, b.description),
          updated_at = now()
      WHERE b.id = $1
+       AND EXISTS (SELECT 1 FROM members m
+                   WHERE m.board_id = b.id AND m.user_id = $4)
      RETURNING ${columns}`,
-    [params.data.id, name ?? null, description ?? null],
+    [params.data.id, name ?? null, description ?? null, res.locals.userId],
   );
   if (rows.length === 0) {
     res.status(404).json({ error: "Board not found" });
@@ -127,9 +120,13 @@ boardsRouter.delete("/:id", async (req, res) => {
     res.status(400).json({ error: "Invalid board id" });
     return;
   }
-  const result = await pool.query("DELETE FROM boards WHERE id = $1", [
-    params.data.id,
-  ]);
+  const result = await pool.query(
+    `DELETE FROM boards AS b
+     WHERE b.id = $1
+       AND EXISTS (SELECT 1 FROM members m
+                   WHERE m.board_id = b.id AND m.user_id = $2)`,
+    [params.data.id, res.locals.userId],
+  );
   if (result.rowCount === 0) {
     res.status(404).json({ error: "Board not found" });
     return;

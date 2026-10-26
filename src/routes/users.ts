@@ -1,6 +1,8 @@
 import { Router } from "express";
+import type { Request, Response } from "express";
 import { z } from "zod";
 import { pool } from "../db.js";
+import { requireAuth } from "../middleware/auth.js";
 import { hashPassword } from "../password.js";
 
 export const usersRouter = Router();
@@ -25,6 +27,21 @@ const updateUser = z
     message: "Provide at least one field to update",
   });
 
+// Returns the id only if it's the caller's own; otherwise sends an error.
+function ownId(req: Request, res: Response): string | null {
+  const params = idParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid user id" });
+    return null;
+  }
+  if (params.data.id !== res.locals.userId) {
+    res.status(403).json({ error: "You can only access your own account" });
+    return null;
+  }
+  return params.data.id;
+}
+
+// Sign-up: public.
 usersRouter.post("/", async (req, res) => {
   const parsed = createUser.safeParse(req.body);
   if (!parsed.success) {
@@ -41,22 +58,11 @@ usersRouter.post("/", async (req, res) => {
   res.status(201).json(rows[0]);
 });
 
-usersRouter.get("/", async (_req, res) => {
-  const { rows } = await pool.query(
-    `SELECT ${columns} FROM users ORDER BY created_at`,
-  );
-  res.json(rows);
-});
-
-usersRouter.get("/:id", async (req, res) => {
-  const params = idParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: "Invalid user id" });
-    return;
-  }
+// Who am I? Must come before "/:id" so "me" isn't treated as an id.
+usersRouter.get("/me", requireAuth, async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT ${columns} FROM users WHERE id = $1`,
-    [params.data.id],
+    [res.locals.userId],
   );
   if (rows.length === 0) {
     res.status(404).json({ error: "User not found" });
@@ -65,10 +71,25 @@ usersRouter.get("/:id", async (req, res) => {
   res.json(rows[0]);
 });
 
-usersRouter.patch("/:id", async (req, res) => {
-  const params = idParams.safeParse(req.params);
+usersRouter.get("/:id", requireAuth, async (req, res) => {
+  const id = ownId(req, res);
+  if (!id) return;
+  const { rows } = await pool.query(
+    `SELECT ${columns} FROM users WHERE id = $1`,
+    [id],
+  );
+  if (rows.length === 0) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json(rows[0]);
+});
+
+usersRouter.patch("/:id", requireAuth, async (req, res) => {
+  const id = ownId(req, res);
+  if (!id) return;
   const body = updateUser.safeParse(req.body);
-  if (!params.success || !body.success) {
+  if (!body.success) {
     res.status(400).json({ error: "Invalid input" });
     return;
   }
@@ -80,7 +101,7 @@ usersRouter.patch("/:id", async (req, res) => {
          updated_at = now()
      WHERE id = $1
      RETURNING ${columns}`,
-    [params.data.id, email?.toLowerCase() ?? null, displayName ?? null],
+    [id, email?.toLowerCase() ?? null, displayName ?? null],
   );
   if (rows.length === 0) {
     res.status(404).json({ error: "User not found" });
@@ -89,15 +110,10 @@ usersRouter.patch("/:id", async (req, res) => {
   res.json(rows[0]);
 });
 
-usersRouter.delete("/:id", async (req, res) => {
-  const params = idParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: "Invalid user id" });
-    return;
-  }
-  const result = await pool.query("DELETE FROM users WHERE id = $1", [
-    params.data.id,
-  ]);
+usersRouter.delete("/:id", requireAuth, async (req, res) => {
+  const id = ownId(req, res);
+  if (!id) return;
+  const result = await pool.query("DELETE FROM users WHERE id = $1", [id]);
   if (result.rowCount === 0) {
     res.status(404).json({ error: "User not found" });
     return;
