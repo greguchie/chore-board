@@ -1,10 +1,16 @@
 import { readFileSync } from "node:fs";
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
+import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 import { parse } from "yaml";
 import { pool } from "./db.js";
 import { requireAuth, requireBoardMember } from "./middleware/auth.js";
+import {
+  apiLimiter,
+  loginLimiter,
+  signupLimiter,
+} from "./middleware/rateLimit.js";
 import { authRouter } from "./routes/auth.js";
 import { boardsRouter } from "./routes/boards.js";
 import { membersRouter } from "./routes/members.js";
@@ -17,6 +23,19 @@ const openApiDocument = parse(
   readFileSync(new URL("../openapi.yaml", import.meta.url), "utf8"),
 );
 
+// API docs: security headers on, but Swagger UI needs inline scripts,
+// so its content-security policy is relaxed. Registered before the
+// strict helmet() below so that one never applies here.
+app.use(
+  "/docs",
+  helmet({ contentSecurityPolicy: false }),
+  swaggerUi.serve,
+  swaggerUi.setup(openApiDocument),
+);
+
+// Everything else: full security headers + a global rate limit.
+app.use(helmet());
+app.use(apiLimiter);
 app.use(express.json());
 
 app.get("/health", async (_req, res) => {
@@ -24,7 +43,9 @@ app.get("/health", async (_req, res) => {
   res.json({ status: "ok", dbTime: result.rows[0].time });
 });
 
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
+// Extra limits on the endpoints attackers target most.
+app.use("/auth/login", loginLimiter);
+app.post("/users", signupLimiter);
 
 // Public: login/refresh/logout. Users router handles its own auth per route
 // (sign-up is public, everything else requires login).
@@ -40,7 +61,7 @@ app.use(
 );
 app.use("/boards/:boardId/tasks", requireAuth, requireBoardMember, tasksRouter);
 
-// Boards: must be logged in; each route checks membership itself.
+// Boards: must be logged in; each route checks membership and role itself.
 app.use("/boards", requireAuth, boardsRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
