@@ -3,6 +3,8 @@ import { z } from "zod";
 import { pool } from "../db.js";
 import { verifyAccessToken } from "../tokens.js";
 
+export type BoardRole = "owner" | "admin" | "member";
+
 // Gate 1: is the caller logged in?
 // Reads "Authorization: Bearer <token>", verifies the JWT, and stores
 // the user's id in res.locals.userId for the routes behind it.
@@ -29,7 +31,7 @@ const boardIdSchema = z.uuid();
 
 // Gate 2: is the caller a member of this board?
 // Non-members get 404 (not 403) so we never confirm a board exists.
-// Stores their role in res.locals.boardRole for Step 6.
+// Stores their role in res.locals.boardRole for Gate 3.
 export async function requireBoardMember(
   req: Request,
   res: Response,
@@ -50,4 +52,18 @@ export async function requireBoardMember(
   }
   res.locals.boardRole = rows[0].role;
   next();
+}
+
+// Gate 3: does the caller's role allow this action?
+// Use after requireBoardMember, e.g. requireRole("owner", "admin").
+export function requireRole(...allowed: BoardRole[]) {
+  return (_req: Request, res: Response, next: NextFunction) => {
+    if (!allowed.includes(res.locals.boardRole)) {
+      res
+        .status(403)
+        .json({ error: "Your role on this board doesn't allow this" });
+      return;
+    }
+    next();
+  };
 }
