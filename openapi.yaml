@@ -1,25 +1,39 @@
 openapi: 3.0.3
 info:
   title: Chore Board API
-  version: 1.0.0
+  version: 2.0.0
   description: >
-    REST API for chore-board. Manage users, boards, board members and tasks.
-    Authentication is added in a later phase, so every endpoint is currently open.
+    REST API for chore-board: users, boards, board members and tasks.
+    Most endpoints need a bearer access token from POST /auth/login.
+    Board data is only visible to members of that board (others get 404),
+    and some actions need the owner or admin role (others get 403).
+    JSON bodies are limited to 10 KB, and requests are rate limited per IP.
 servers:
   - url: http://localhost:3000
     description: Local development
-security: []
+security:
+  - bearerAuth: []
 tags:
   - name: Health
+    description: Service status
+  - name: Auth
+    description: Log in, refresh tokens and log out
   - name: Users
+    description: Sign up and manage your own account
   - name: Boards
+    description: Chore boards you own or belong to
   - name: Members
+    description: Who is on a board and their role
   - name: Tasks
+    description: Chores on a board
+
 paths:
   /health:
     get:
       tags: [Health]
+      operationId: getHealth
       summary: Check that the API and database are running
+      security: []
       responses:
         "200":
           description: Both are up
@@ -30,11 +44,83 @@ paths:
                 properties:
                   status: { type: string, example: ok }
                   dbTime: { type: string, format: date-time }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Log in with email and password
+      description: >
+        Returns a 15-minute access token and a 30-day refresh token.
+        An unknown email and a wrong password give the same 401.
+        After 5 failed attempts in 15 minutes the IP address gets 429.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshTokens
+      summary: Swap a refresh token for a new token pair
+      description: >
+        Each refresh token works once. The response contains a new access
+        token and a new refresh token. Reusing an old refresh token is
+        treated as theft and ends the whole session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "200":
+          description: New token pair
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RefreshResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: End the session that owns this refresh token
+      description: >
+        Always returns 204, whether or not the token was valid, so the
+        response never reveals anything about the token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "204":
+          description: Logged out
+        "400": { $ref: "#/components/responses/BadRequest" }
 
   /users:
     post:
       tags: [Users]
-      summary: Create a user
+      operationId: createUser
+      summary: Sign up (create a user)
+      description: Public. Limited to 10 sign-ups per hour per IP address.
+      security: []
       requestBody:
         required: true
         content:
@@ -48,24 +134,29 @@ paths:
               schema: { $ref: "#/components/schemas/User" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /users/me:
     get:
       tags: [Users]
-      summary: List all users
+      operationId: getMe
+      summary: Get your own profile
       responses:
         "200":
-          description: All users
+          description: Your profile
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/User" }
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
-  /users/{userId}:
+  /users/{id}:
     parameters:
       - $ref: "#/components/parameters/UserId"
     get:
       tags: [Users]
-      summary: Get one user
+      operationId: getUser
+      summary: Get a user (your own account only)
       responses:
         "200":
           description: The user
@@ -73,11 +164,13 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/User" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Users]
-      summary: Update a user
-      description: Send only the fields to change.
+      operationId: updateUser
+      summary: Update your own email or display name
       requestBody:
         required: true
         content:
@@ -85,29 +178,46 @@ paths:
             schema: { $ref: "#/components/schemas/UpdateUser" }
       responses:
         "200":
-          description: The updated user
+          description: Updated user
           content:
             application/json:
               schema: { $ref: "#/components/schemas/User" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
     delete:
       tags: [Users]
-      summary: Delete a user
-      description: Blocked with a 409 while the user still owns a board.
+      operationId: deleteUser
+      summary: Delete your own account
       responses:
         "204":
-          description: User deleted
+          description: Deleted
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
   /boards:
+    get:
+      tags: [Boards]
+      operationId: listBoards
+      summary: List the boards you belong to, with your role on each
+      responses:
+        "200":
+          description: Your boards
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Board" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Boards]
-      summary: Create a board
-      description: Also adds the owner as a member with the owner role, in one transaction.
+      operationId: createBoard
+      summary: Create a board (you become its owner)
       requestBody:
         required: true
         content:
@@ -120,31 +230,16 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Board" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "404": { $ref: "#/components/responses/NotFound" }
-    get:
-      tags: [Boards]
-      summary: List boards
-      description: Returns every board, or only the boards a user belongs to when userId is given.
-      parameters:
-        - name: userId
-          in: query
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: The boards
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/Board" }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
 
-  /boards/{boardId}:
+  /boards/{id}:
     parameters:
-      - $ref: "#/components/parameters/BoardId"
+      - $ref: "#/components/parameters/BoardIdAsId"
     get:
       tags: [Boards]
-      summary: Get one board
+      operationId: getBoard
+      summary: Get a board (any member)
       responses:
         "200":
           description: The board
@@ -152,10 +247,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Board" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Boards]
-      summary: Update a board
+      operationId: updateBoard
+      summary: Rename or edit a board (owner or admin)
       requestBody:
         required: true
         content:
@@ -163,29 +260,48 @@ paths:
             schema: { $ref: "#/components/schemas/UpdateBoard" }
       responses:
         "200":
-          description: The updated board
+          description: Updated board
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Board" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [Boards]
-      summary: Delete a board
-      description: Also deletes the board's members and tasks.
+      operationId: deleteBoard
+      summary: Delete a board and everything on it (owner only)
       responses:
         "204":
-          description: Board deleted
+          description: Deleted
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /boards/{boardId}/members:
     parameters:
       - $ref: "#/components/parameters/BoardId"
+    get:
+      tags: [Members]
+      operationId: listMembers
+      summary: List the board's members (any member)
+      responses:
+        "200":
+          description: Members of the board
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MemberListItem" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [Members]
-      summary: Add a user to a board
-      description: The role can be admin or member. The owner is created with the board.
+      operationId: addMember
+      summary: Add a member (owner or admin; only the owner can add admins)
       requestBody:
         required: true
         content:
@@ -198,21 +314,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Member" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
-    get:
-      tags: [Members]
-      summary: List a board's members
-      responses:
-        "200":
-          description: The members, with each person's name and email
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/BoardMember" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "404": { $ref: "#/components/responses/NotFound" }
 
   /boards/{boardId}/members/{memberId}:
     parameters:
@@ -220,8 +325,8 @@ paths:
       - $ref: "#/components/parameters/MemberId"
     patch:
       tags: [Members]
-      summary: Change a member's role
-      description: The owner's role can't be changed.
+      operationId: updateMemberRole
+      summary: Change a member's role (owner only)
       requestBody:
         required: true
         content:
@@ -229,31 +334,64 @@ paths:
             schema: { $ref: "#/components/schemas/UpdateMember" }
       responses:
         "200":
-          description: The updated member
+          description: Updated member
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Member" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
     delete:
       tags: [Members]
-      summary: Remove a member from a board
-      description: The owner can't be removed. Tasks assigned to the member stay and become unassigned.
+      operationId: removeMember
+      summary: Remove a member, or leave the board yourself
+      description: >
+        The owner can remove anyone except themselves. Admins can remove
+        plain members. Anyone except the owner can remove themselves
+        (leave). The owner can't be removed; delete the board instead.
       responses:
         "204":
-          description: Member removed
+          description: Removed
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
   /boards/{boardId}/tasks:
     parameters:
       - $ref: "#/components/parameters/BoardId"
+    get:
+      tags: [Tasks]
+      operationId: listTasks
+      summary: List the board's tasks (any member)
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/TaskStatus" }
+        - name: assigneeId
+          in: query
+          required: false
+          description: Membership id to filter by
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Tasks on the board
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [Tasks]
-      summary: Create a task
-      description: The assignee, when given, must be a member of this board.
+      operationId: createTask
+      summary: Create a task (any member)
       requestBody:
         required: true
         content:
@@ -266,28 +404,9 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Task" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
-    get:
-      tags: [Tasks]
-      summary: List a board's tasks
-      parameters:
-        - name: status
-          in: query
-          schema: { type: string, enum: [todo, in_progress, done] }
-        - name: assigneeId
-          in: query
-          description: A member id.
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: The tasks
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/Task" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
 
   /boards/{boardId}/tasks/{taskId}:
     parameters:
@@ -295,7 +414,8 @@ paths:
       - $ref: "#/components/parameters/TaskId"
     get:
       tags: [Tasks]
-      summary: Get one task
+      operationId: getTask
+      summary: Get a task (any member)
       responses:
         "200":
           description: The task
@@ -303,13 +423,15 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Task" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Tasks]
-      summary: Update a task
+      operationId: updateTask
+      summary: Update a task (any member)
       description: >
-        Send only the fields to change. Send null for description, assigneeId or dueDate
-        to clear them. Setting status to done fills in completedAt, and moving it back clears it.
+        Setting status to "done" records completedAt; moving it away
+        from "done" clears it.
       requestBody:
         required: true
         content:
@@ -317,58 +439,98 @@ paths:
             schema: { $ref: "#/components/schemas/UpdateTask" }
       responses:
         "200":
-          description: The updated task
+          description: Updated task
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Task" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [Tasks]
-      summary: Delete a task
+      operationId: deleteTask
+      summary: Delete a task (owner or admin)
       responses:
         "204":
-          description: Task deleted
+          description: Deleted
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from POST /auth/login or /auth/refresh, valid for 15 minutes.
+
   parameters:
     UserId:
-      name: userId
+      name: id
       in: path
       required: true
+      description: User id
+      schema: { type: string, format: uuid }
+    BoardIdAsId:
+      name: id
+      in: path
+      required: true
+      description: Board id
       schema: { type: string, format: uuid }
     BoardId:
       name: boardId
       in: path
       required: true
+      description: Board id
       schema: { type: string, format: uuid }
     MemberId:
       name: memberId
       in: path
       required: true
-      description: A member id, not a user id.
+      description: Membership id (the "id" from the members list), not the user id
       schema: { type: string, format: uuid }
     TaskId:
       name: taskId
       in: path
       required: true
+      description: Task id
       schema: { type: string, format: uuid }
 
   responses:
     BadRequest:
-      description: The request failed validation
+      description: Invalid input or malformed JSON
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing, invalid or expired token, or wrong login details
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Your account or board role doesn't allow this
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     NotFound:
-      description: The resource was not found
+      description: Not found (also returned for boards you aren't a member of)
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     Conflict:
-      description: The request conflicts with existing data
+      description: Conflicts with existing data (for example, an email already in use)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PayloadTooLarge:
+      description: Request body is larger than 10 KB
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooManyRequests:
+      description: Rate limit exceeded; try again later
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -378,28 +540,44 @@ components:
       type: object
       required: [error]
       properties:
-        error: { type: string }
+        error: { type: string, example: Invalid input }
         details:
           type: array
-          description: Validation problems, when there are any.
+          description: Validation problems (only on some 400 responses)
           items: { type: object }
+
+    Role:
+      type: string
+      enum: [owner, admin, member]
+
+    TaskStatus:
+      type: string
+      enum: [todo, in_progress, done]
 
     User:
       type: object
-      required: [id, email, displayName, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
         displayName: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    UserSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+
     CreateUser:
       type: object
       required: [email, displayName, password]
       properties:
         email: { type: string, format: email }
         displayName: { type: string, minLength: 1, maxLength: 100 }
-        password: { type: string, format: password, minLength: 8, maxLength: 128 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+
     UpdateUser:
       type: object
       minProperties: 1
@@ -407,9 +585,38 @@ components:
         email: { type: string, format: email }
         displayName: { type: string, minLength: 1, maxLength: 100 }
 
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 1, maxLength: 128 }
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        tokenType: { type: string, example: Bearer }
+        accessTokenExpiresIn: { type: string, example: 15m }
+        user: { $ref: "#/components/schemas/UserSummary" }
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string, minLength: 1, maxLength: 200 }
+
+    RefreshResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        tokenType: { type: string, example: Bearer }
+        accessTokenExpiresIn: { type: string, example: 15m }
+
     Board:
       type: object
-      required: [id, name, description, ownerId, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -417,13 +624,18 @@ components:
         ownerId: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        myRole:
+          allOf:
+            - $ref: "#/components/schemas/Role"
+          description: Your role on this board (not included in PATCH responses)
+
     CreateBoard:
       type: object
-      required: [name, ownerId]
+      required: [name]
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
         description: { type: string, maxLength: 500 }
-        ownerId: { type: string, format: uuid }
+
     UpdateBoard:
       type: object
       minProperties: 1
@@ -433,63 +645,77 @@ components:
 
     Member:
       type: object
-      required: [id, boardId, userId, role, joinedAt]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: string, format: uuid, description: Membership id }
         boardId: { type: string, format: uuid }
         userId: { type: string, format: uuid }
-        role: { type: string, enum: [owner, admin, member] }
+        role: { $ref: "#/components/schemas/Role" }
         joinedAt: { type: string, format: date-time }
-    BoardMember:
+
+    MemberListItem:
       type: object
-      required: [id, userId, displayName, email, role, joinedAt]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: string, format: uuid, description: Membership id }
         userId: { type: string, format: uuid }
         displayName: { type: string }
         email: { type: string, format: email }
-        role: { type: string, enum: [owner, admin, member] }
+        role: { $ref: "#/components/schemas/Role" }
         joinedAt: { type: string, format: date-time }
+
     AddMember:
       type: object
       required: [userId]
       properties:
         userId: { type: string, format: uuid }
-        role: { type: string, enum: [admin, member], default: member }
+        role:
+          type: string
+          enum: [admin, member]
+          default: member
+
     UpdateMember:
       type: object
       required: [role]
       properties:
-        role: { type: string, enum: [admin, member] }
+        role:
+          type: string
+          enum: [admin, member]
 
     Task:
       type: object
-      required: [id, boardId, title, description, status, assigneeId, dueDate, completedAt, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         boardId: { type: string, format: uuid }
         title: { type: string }
         description: { type: string, nullable: true }
-        status: { type: string, enum: [todo, in_progress, done] }
-        assigneeId: { type: string, format: uuid, nullable: true }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        assigneeId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Membership id of the assignee
         dueDate: { type: string, format: date, nullable: true }
         completedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
     CreateTask:
       type: object
       required: [title]
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
         description: { type: string, maxLength: 2000 }
-        assigneeId: { type: string, format: uuid, description: A member id on this board. }
+        assigneeId:
+          type: string
+          format: uuid
+          description: Membership id of a member of this board
         dueDate: { type: string, format: date }
+
     UpdateTask:
       type: object
       minProperties: 1
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
         description: { type: string, maxLength: 2000, nullable: true }
-        status: { type: string, enum: [todo, in_progress, done] }
+        status: { $ref: "#/components/schemas/TaskStatus" }
         assigneeId: { type: string, format: uuid, nullable: true }
         dueDate: { type: string, format: date, nullable: true }
