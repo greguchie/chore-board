@@ -9,7 +9,8 @@
     "build": "tsc",
     "start": "node --env-file=.env dist/index.js",
     "migrate": "node --env-file=.env node_modules/.bin/node-pg-migrate",
-    "test:api": "newman run postman/chore-board.postman_collection.json"
+    "test:api": "newman run postman/chore-board.postman_collection.json",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "keywords": [],
   "author": "",

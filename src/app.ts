@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from "express";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 import { parse } from "yaml";
+import { config } from "./config.js";
 import { pool } from "./db.js";
 import { requireAuth, requireBoardMember } from "./middleware/auth.js";
 import {
@@ -19,19 +20,20 @@ import { usersRouter } from "./routes/users.js";
 
 export const app = express();
 
-const openApiDocument = parse(
-  readFileSync(new URL("../openapi.yaml", import.meta.url), "utf8"),
-);
-
-// API docs: security headers on, but Swagger UI needs inline scripts,
-// so its content-security policy is relaxed. Registered before the
-// strict helmet() below so that one never applies here.
-app.use(
-  "/docs",
-  helmet({ contentSecurityPolicy: false }),
-  swaggerUi.serve,
-  swaggerUi.setup(openApiDocument),
-);
+// API docs: development only, so production doesn't publish a full map
+// of the API. Swagger UI needs inline scripts, so its content-security
+// policy is relaxed; registered before the strict helmet() below.
+if (config.NODE_ENV !== "production") {
+  const openApiDocument = parse(
+    readFileSync(new URL("../openapi.yaml", import.meta.url), "utf8"),
+  );
+  app.use(
+    "/docs",
+    helmet({ contentSecurityPolicy: false }),
+    swaggerUi.serve,
+    swaggerUi.setup(openApiDocument),
+  );
+}
 
 // Everything else: full security headers + a global rate limit.
 app.use(helmet());
