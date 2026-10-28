@@ -12,16 +12,16 @@ final class HealthViewModel {
     }
 
     private(set) var state: State = .idle
-    private let service: HealthService
+    private let api: APIClient
 
-    init(service: HealthService = HealthService()) {
-        self.service = service
+    init(api: APIClient = .shared) {
+        self.api = api
     }
 
     func check() async {
         state = .loading
         do {
-            state = .online(try await service.fetch())
+            state = .online(try await api.send(API.health))
         } catch {
             state = .failed(error.localizedDescription)
         }
