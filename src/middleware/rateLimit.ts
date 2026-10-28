@@ -20,12 +20,17 @@ export const apiLimiter = rateLimit({
 });
 
 // Brute-force protection: only FAILED logins count toward the limit.
+// Each blocked attempt is logged so a brute-force attack is visible.
 export const loginLimiter = rateLimit({
   ...common,
   windowMs: FIFTEEN_MINUTES,
   limit: config.RATE_LIMIT_LOGIN_MAX,
   skipSuccessfulRequests: true,
   message: { error: "Too many failed login attempts, try again in 15 minutes" },
+  handler: (req, res, _next, options) => {
+    console.warn(`Login rate limit reached for IP ${req.ip}`);
+    res.status(options.statusCode).json(options.message);
+  },
 });
 
 // Stops bots from mass-creating accounts.
