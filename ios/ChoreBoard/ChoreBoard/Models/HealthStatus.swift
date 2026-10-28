@@ -1,4 +1,6 @@
-struct HealthStatus: Decodable {
+import Foundation
+
+nonisolated struct HealthStatus: Decodable, Sendable {
     let status: String
-    let dbTime: String // kept as text for now; proper date handling comes in Step 2
+    let dbTime: Date
 }

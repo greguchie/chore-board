@@ -18,8 +18,7 @@ struct ContentView: View {
             case .online(let health):
                 Label("API online", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-                Text("DB time: \(health.dbTime)")
-                    .font(.footnote)
+                Text("DB time: \(health.dbTime.formatted(date: .abbreviated, time: .standard))")                    .font(.footnote)
                     .foregroundStyle(.secondary)
             case .failed(let message):
                 Label("API unreachable", systemImage: "xmark.octagon.fill")
