@@ -627,8 +627,7 @@ components:
         myRole:
           allOf:
             - $ref: "#/components/schemas/Role"
-          description: Your role on this board (not included in PATCH responses)
-
+          description: Your role on this board
     CreateBoard:
       type: object
       required: [name]

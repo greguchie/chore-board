@@ -29,4 +29,15 @@ nonisolated enum Validation {
         if value.utf16.count > 100 { return "Use 100 characters or fewer" }
         return nil
     }
+    
+    static func boardNameError(_ name: String) -> String? {
+        let value = trimmed(name)
+        if value.isEmpty { return "Enter a board name" }
+        if value.utf16.count > 100 { return "Use 100 characters or fewer" }
+        return nil
+    }
+
+    static func boardDescriptionError(_ description: String) -> String? {
+        trimmed(description).utf16.count > 500 ? "Use 500 characters or fewer" : nil
+    }
 }
