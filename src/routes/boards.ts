@@ -127,7 +127,8 @@ boardsRouter.patch("/:id", async (req, res) => {
      RETURNING ${columns}`,
     [params.data.id, name ?? null, description ?? null],
   );
-  res.json(rows[0]);
+  // Include the caller's role, like every other board response.
+  res.json({ ...rows[0], myRole: role });
 });
 
 // Only the owner can delete.

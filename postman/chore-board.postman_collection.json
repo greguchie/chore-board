@@ -1521,7 +1521,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"renamed\", () => { pm.expect(pm.response.json().name).to.eql(\"Admin rename\"); });"
+                  "pm.test(\"renamed\", () => { pm.expect(pm.response.json().name).to.eql(\"Admin rename\"); });",
+                  "pm.test(\"role included\", () => { pm.expect(pm.response.json().myRole).to.eql(\"admin\"); });"
                 ]
               }
             }

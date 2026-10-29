@@ -285,7 +285,11 @@ const folders = [
     req("Admin can edit the board", "PATCH", BOARD, {
       as: "adminToken",
       body: { name: "Admin rename" },
-      tests: [status(200), check("renamed", 'pm.expect(pm.response.json().name).to.eql("Admin rename");')],
+      tests: [
+        status(200),
+        check("renamed", 'pm.expect(pm.response.json().name).to.eql("Admin rename");'),
+        check("role included", 'pm.expect(pm.response.json().myRole).to.eql("admin");'),
+      ],
     }),
     req("Admin can't delete the board", "DELETE", BOARD, {
       as: "adminToken",
