@@ -7,6 +7,7 @@ nonisolated private struct ServerErrorBody: Decodable {
 nonisolated enum APIError: LocalizedError, Equatable, Sendable {
     case offline
     case unauthorized
+    case invalidCredentials
     case forbidden(String)
     case notFound(String)
     case conflict(String)
@@ -46,7 +47,7 @@ nonisolated enum APIError: LocalizedError, Equatable, Sendable {
         switch self {
         case .offline: "Can't reach the server. Check your connection and try again."
         case .unauthorized: "Your session has expired. Please log in again."
-        case .forbidden(let message), .notFound(let message),
+        case .invalidCredentials: "Incorrect email or password."        case .forbidden(let message), .notFound(let message),
              .conflict(let message), .invalidInput(let message): message
         case .rateLimited: "Too many attempts. Please wait a few minutes and try again."
         case .server: "Something went wrong on our side. Please try again."

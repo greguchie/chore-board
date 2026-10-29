@@ -1,21 +1,35 @@
 import Foundation
 
+/// Supplies access tokens to APIClient and renews them when they expire.
+/// AuthSession is the real one.
+@MainActor
+protocol AccessTokenProviding: AnyObject {
+    var accessToken: String? { get }
+    /// Called after a 401. Returns a working access token, refreshing if needed.
+    func refreshedAccessToken(after failedToken: String) async throws -> String
+    /// Called when the server still says 401 even after a refresh.
+    func sessionExpired()
+}
+
 /// The one place the app talks to the backend: builds the request,
 /// attaches the access token, sends it, and returns a model or an APIError.
 @MainActor
 final class APIClient {
+    /// Sends a request. The real app uses URLSession; tests plug in a fake server.
+    typealias Transport = (URLRequest) async throws -> (Data, URLResponse)
+
     static let shared = APIClient()
 
     private let baseURL: URL
-    private let session: URLSession
+    private let transport: Transport
 
-    /// Supplies the current access token. Step 3 connects this
-    /// to the Keychain and automatic token refresh.
-    var accessTokenProvider: () -> String? = { nil }
+    /// Weak so APIClient and AuthSession don't keep each other alive forever.
+    weak var tokenProvider: (any AccessTokenProviding)?
 
-    init(baseURL: URL = AppConfig.apiBaseURL, session: URLSession = .shared) {
+    init(baseURL: URL = AppConfig.apiBaseURL,
+         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) }) {
         self.baseURL = baseURL
-        self.session = session
+        self.transport = transport
     }
 
     /// Sends a request and decodes the JSON response.
@@ -54,31 +68,46 @@ final class APIClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         if endpoint.requiresAuth {
-            guard let token = accessTokenProvider() else { throw APIError.unauthorized }
+            guard let token = tokenProvider?.accessToken else { throw APIError.unauthorized }
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         return request
     }
 
-    private func perform(_ endpoint: Endpoint) async throws -> Data {
+    private func perform(_ endpoint: Endpoint, isRetry: Bool = false) async throws -> Data {
         let request = try makeRequest(for: endpoint)
+        let (data, http) = try await transmit(request)
 
+        // Expired access token: refresh once, then retry the same request once.
+        if http.statusCode == 401, endpoint.requiresAuth, let provider = tokenProvider {
+            let sentToken = request.value(forHTTPHeaderField: "Authorization")
+                .map { String($0.dropFirst("Bearer ".count)) }
+            guard !isRetry, let sentToken else {
+                provider.sessionExpired()   // still 401 with a fresh token: give up
+                throw APIError.unauthorized
+            }
+            _ = try await provider.refreshedAccessToken(after: sentToken)
+            return try await perform(endpoint, isRetry: true)
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError(statusCode: http.statusCode, body: data)
+        }
+        return data
+    }
+
+    private func transmit(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let result: (Data, URLResponse)
         do {
-            result = try await session.data(for: request)
+            result = try await transport(request)
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()   // the screen went away; not a real error
         } catch let error as URLError {
             throw APIError(urlError: error)
         }
-        let (data, response) = result
-
-        guard let http = response as? HTTPURLResponse else {
+        guard let http = result.1 as? HTTPURLResponse else {
             throw APIError.unexpected("Response was not HTTP")
         }
-        guard (200..<300).contains(http.statusCode) else {
-            throw APIError(statusCode: http.statusCode, body: data)
-        }
-        return data
+        return (result.0, http)
     }
 }
