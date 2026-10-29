@@ -18,7 +18,8 @@ struct ContentView: View {
             case .online(let health):
                 Label("API online", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-                Text("DB time: \(health.dbTime.formatted(date: .abbreviated, time: .standard))")                    .font(.footnote)
+                Text("DB time: \(health.dbTime.formatted(date: .abbreviated, time: .standard))")
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             case .failed(let message):
                 Label("API unreachable", systemImage: "xmark.octagon.fill")
@@ -33,6 +34,10 @@ struct ContentView: View {
                 Task { await viewModel.check() }
             }
             .buttonStyle(.bordered)
+
+            Divider().padding(.vertical, 8)
+
+            SessionDebugView()
         }
         .padding()
         .task { await viewModel.check() }
@@ -41,4 +46,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+        .environment(AuthSession(api: APIClient(), store: InMemoryTokenStore()))
 }

@@ -77,7 +77,8 @@ struct APIDecodingTests {
 
     @Test @MainActor func buildsAuthorizedRequestWithLowercaseIds() throws {
         let client = APIClient(baseURL: URL(string: "http://example.test")!)
-        client.accessTokenProvider = { "test-token" }
+        let session = AuthSession(api: client,
+                                  store: InMemoryTokenStore(StoredTokens(accessToken: "test-token", refreshToken: "r")))
         let boardId = UUID(uuidString: "3F2504E0-4F89-41D3-9A0C-0305E82C3301")!
 
         let request = try client.makeRequest(for: API.tasks(boardId: boardId, status: .inProgress))
@@ -86,6 +87,7 @@ struct APIDecodingTests {
             "http://example.test/boards/3f2504e0-4f89-41d3-9a0c-0305e82c3301/tasks?status=in_progress")
         #expect(request.httpMethod == "GET")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-token")
+        #expect(session.isLoggedIn)   // keeps the session alive until the end of the test
     }
 
     @Test @MainActor func refusesProtectedRequestWithoutToken() {
