@@ -11,7 +11,7 @@ struct ChoreBoardApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
                 .environment(session)
         }
     }
