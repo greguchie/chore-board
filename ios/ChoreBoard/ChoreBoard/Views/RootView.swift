@@ -4,13 +4,15 @@ import SwiftUI
 struct RootView: View {
     @Environment(AuthSession.self) private var session
     @State private var router = AppRouter()
+    let cache: any OfflineCaching
 
     var body: some View {
         Group {
             if session.isLoggedIn {
                 NavigationStack(path: $router.path) {
                     BoardsListView(service: APIBoardsService(api: .shared),
-                                   tasksService: APITasksService(api: .shared))
+                                   tasksService: APITasksService(api: .shared),
+                                   cache: cache)
                 }
                 .environment(router)
             } else {
@@ -18,8 +20,11 @@ struct RootView: View {
             }
         }
         .animation(.default, value: session.isLoggedIn)
-        // Logging in or out always starts from the boards list,
-        // never on the previous user's screen.
-        .onChange(of: session.isLoggedIn) { router.reset() }
+        .onChange(of: session.isLoggedIn) { _, isLoggedIn in
+            // Logging in or out always starts from the boards list.
+            router.reset()
+            // Never show one user's saved chores to the next person.
+            if !isLoggedIn { cache.clear() }
+        }
     }
 }

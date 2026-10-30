@@ -94,7 +94,8 @@ struct BoardsTests {
 
         #expect(viewModel.boards.count == 1)
         #expect(viewModel.state == .loaded)
-        #expect(viewModel.actionError == APIError.offline.localizedDescription)
+        #expect(viewModel.isOffline)                 // a banner now, not an alert
+        #expect(viewModel.actionError == nil)
     }
 
     @Test func deleteRemovesBoard() async {
