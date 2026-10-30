@@ -40,4 +40,14 @@ nonisolated enum Validation {
     static func boardDescriptionError(_ description: String) -> String? {
         trimmed(description).utf16.count > 500 ? "Use 500 characters or fewer" : nil
     }
+    static func taskTitleError(_ title: String) -> String? {
+        let value = trimmed(title)
+        if value.isEmpty { return "Enter a task title" }
+        if value.utf16.count > 200 { return "Use 200 characters or fewer" }
+        return nil
+    }
+
+    static func taskDescriptionError(_ description: String) -> String? {
+        trimmed(description).utf16.count > 2000 ? "Use 2,000 characters or fewer" : nil
+    }
 }
