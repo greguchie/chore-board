@@ -4,10 +4,13 @@ import SwiftUI
 struct BoardRouteView: View {
     @State private var viewModel: BoardRouteViewModel
     private let tasksService: any TasksProviding
+    private let cache: (any OfflineCaching)?
 
     init(boardId: UUID, cached: Board?,
-         boardsService: any BoardsProviding, tasksService: any TasksProviding) {
+         boardsService: any BoardsProviding, tasksService: any TasksProviding,
+         cache: (any OfflineCaching)? = nil) {
         self.tasksService = tasksService
+        self.cache = cache
         _viewModel = State(initialValue: BoardRouteViewModel(boardId: boardId, cached: cached,
                                                              service: boardsService))
     }
@@ -20,7 +23,7 @@ struct BoardRouteView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             case .loaded(let board):
-                BoardDetailView(board: board, service: tasksService)
+                BoardDetailView(board: board, service: tasksService, cache: cache)
 
             case .notFound:
                 ContentUnavailableView("Board not available",

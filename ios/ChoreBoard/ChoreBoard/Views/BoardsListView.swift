@@ -9,11 +9,13 @@ struct BoardsListView: View {
     @State private var boardToOpen: UUID?
     private let service: any BoardsProviding
     private let tasksService: any TasksProviding
+    private let cache: any OfflineCaching
 
-    init(service: any BoardsProviding, tasksService: any TasksProviding) {
+    init(service: any BoardsProviding, tasksService: any TasksProviding, cache: any OfflineCaching) {
         self.service = service
         self.tasksService = tasksService
-        _viewModel = State(initialValue: BoardsViewModel(service: service))
+        self.cache = cache
+        _viewModel = State(initialValue: BoardsViewModel(service: service, cache: cache))
     }
 
     var body: some View {
@@ -75,7 +77,8 @@ struct BoardsListView: View {
             BoardRouteView(boardId: id,
                            cached: viewModel.boards.first { $0.id == id },
                            boardsService: service,
-                           tasksService: tasksService)
+                           tasksService: tasksService,
+                           cache: cache)
         }
     }
 
@@ -104,6 +107,9 @@ struct BoardsListView: View {
 
         case .loaded:
             List {
+                if viewModel.isOffline {
+                    Section { OfflineBanner(cachedAt: viewModel.cachedAt) }
+                }
                 if viewModel.boards.isEmpty {
                     ContentUnavailableView {
                         Label("No boards yet", systemImage: "square.grid.2x2")

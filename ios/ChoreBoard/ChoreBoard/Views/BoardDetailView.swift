@@ -5,11 +5,10 @@ struct BoardDetailView: View {
     @State private var sheet: TaskSheet?
     private let service: any TasksProviding
 
-    init(board: Board, service: any TasksProviding) {
+    init(board: Board, service: any TasksProviding, cache: (any OfflineCaching)? = nil) {
         self.service = service
-        _viewModel = State(initialValue: TasksViewModel(board: board, service: service))
+        _viewModel = State(initialValue: TasksViewModel(board: board, service: service, cache: cache))
     }
-
     var body: some View {
         content
             .navigationTitle(viewModel.board.name)
@@ -56,9 +55,11 @@ struct BoardDetailView: View {
 
         case .loaded:
             List {
+                if viewModel.isOffline {
+                    Section { OfflineBanner(cachedAt: viewModel.cachedAt) }
+                }
                 Section {
-                    if let description = viewModel.board.description, !description.isEmpty {
-                        Text(description)
+                    if let description = viewModel.board.description, !description.isEmpty {                        Text(description)
                             .foregroundStyle(.secondary)
                     }
                     LabeledContent("Your role") {
