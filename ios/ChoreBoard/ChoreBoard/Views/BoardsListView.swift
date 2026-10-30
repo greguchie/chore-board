@@ -16,7 +16,7 @@ struct BoardsListView: View {
         content
             .navigationTitle("Boards")
             .navigationDestination(for: Board.self) { board in
-                BoardDetailView(board: board)
+                BoardDetailView(board: board, service: APITasksService(api: .shared))
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

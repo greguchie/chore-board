@@ -39,10 +39,10 @@ nonisolated enum API {
         Endpoint(method: .post, path: "auth/logout",
                  body: RefreshRequest(refreshToken: refreshToken), requiresAuth: false)
     }
-
+    
     // MARK: Current user
     static var me: Endpoint { Endpoint(path: "users/me") }
-
+    
     // MARK: Boards
     static var boards: Endpoint { Endpoint(path: "boards") }
     static func board(_ id: UUID) -> Endpoint {
@@ -57,7 +57,7 @@ nonisolated enum API {
     static func deleteBoard(_ id: UUID) -> Endpoint {
         Endpoint(method: .delete, path: "boards/\(id.apiString)")
     }
-
+    
     // MARK: Members
     static func members(boardId: UUID) -> Endpoint {
         Endpoint(path: "boards/\(boardId.apiString)/members")
@@ -73,7 +73,7 @@ nonisolated enum API {
     static func removeMember(boardId: UUID, memberId: UUID) -> Endpoint {
         Endpoint(method: .delete, path: "boards/\(boardId.apiString)/members/\(memberId.apiString)")
     }
-
+    
     // MARK: Tasks
     static func tasks(boardId: UUID, status: TaskStatus? = nil, assigneeId: UUID? = nil) -> Endpoint {
         var query: [URLQueryItem] = []
@@ -90,5 +90,7 @@ nonisolated enum API {
     static func deleteTask(boardId: UUID, taskId: UUID) -> Endpoint {
         Endpoint(method: .delete, path: "boards/\(boardId.apiString)/tasks/\(taskId.apiString)")
     }
-    // Task updates (PATCH with explicit nulls to clear fields) come in Step 6.
+    static func updateTask(boardId: UUID, taskId: UUID, _ patch: TaskPatch) -> Endpoint {
+        Endpoint(method: .patch, path: "boards/\(boardId.apiString)/tasks/\(taskId.apiString)", body: patch)
+    }
 }
