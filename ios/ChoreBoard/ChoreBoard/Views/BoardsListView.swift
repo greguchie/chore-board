@@ -2,21 +2,25 @@ import SwiftUI
 
 struct BoardsListView: View {
     @Environment(AuthSession.self) private var session
+    @Environment(AppRouter.self) private var router
     @State private var viewModel: BoardsViewModel
     @State private var sheet: BoardSheet?
     @State private var boardToDelete: Board?
+    @State private var boardToOpen: UUID?
     private let service: any BoardsProviding
+    private let tasksService: any TasksProviding
 
-    init(service: any BoardsProviding) {
+    init(service: any BoardsProviding, tasksService: any TasksProviding) {
         self.service = service
+        self.tasksService = tasksService
         _viewModel = State(initialValue: BoardsViewModel(service: service))
     }
 
     var body: some View {
         content
             .navigationTitle("Boards")
-            .navigationDestination(for: Board.self) { board in
-                BoardDetailView(board: board, service: APITasksService(api: .shared))
+            .navigationDestination(for: Route.self) { route in
+                destination(for: route)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -28,9 +32,11 @@ struct BoardsListView: View {
                     }
                 }
             }
-            .sheet(item: $sheet) { sheet in
+            .sheet(item: $sheet, onDismiss: openNewBoard) { sheet in
                 BoardEditorView(service: service, existing: sheet.board) { saved in
                     viewModel.upsert(saved)
+                    // A brand-new board opens once the sheet has finished closing.
+                    if sheet.board == nil { boardToOpen = saved.id }
                 }
             }
             .confirmationDialog(
@@ -59,6 +65,24 @@ struct BoardsListView: View {
                     try? await session.loadCurrentUser()
                 }
             }
+    }
+
+    /// The one place routes become screens.
+    @ViewBuilder
+    private func destination(for route: Route) -> some View {
+        switch route {
+        case .board(let id):
+            BoardRouteView(boardId: id,
+                           cached: viewModel.boards.first { $0.id == id },
+                           boardsService: service,
+                           tasksService: tasksService)
+        }
+    }
+
+    private func openNewBoard() {
+        guard let id = boardToOpen else { return }
+        boardToOpen = nil
+        router.open(.board(id))
     }
 
     @ViewBuilder
@@ -92,7 +116,7 @@ struct BoardsListView: View {
                     .listRowBackground(Color.clear)
                 } else {
                     ForEach(viewModel.boards) { board in
-                        NavigationLink(value: board) {
+                        NavigationLink(value: Route.board(board.id)) {
                             BoardRow(board: board)
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {

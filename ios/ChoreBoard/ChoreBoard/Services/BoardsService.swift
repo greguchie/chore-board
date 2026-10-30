@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 protocol BoardsProviding: AnyObject {
     func list() async throws -> [Board]
+    func board(_ id: UUID) async throws -> Board
     func create(_ draft: BoardDraft) async throws -> Board
     func update(_ id: UUID, with draft: BoardDraft) async throws -> Board
     func delete(_ id: UUID) async throws
@@ -19,6 +20,10 @@ final class APIBoardsService: BoardsProviding {
 
     func list() async throws -> [Board] {
         try await api.send(API.boards, as: [Board].self)
+    }
+
+    func board(_ id: UUID) async throws -> Board {
+        try await api.send(API.board(id), as: Board.self)
     }
 
     func create(_ draft: BoardDraft) async throws -> Board {

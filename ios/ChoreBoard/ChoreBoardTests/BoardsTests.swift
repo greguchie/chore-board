@@ -35,10 +35,20 @@ final class FakeBoardsService: BoardsProviding {
         if let error { throw error }
         return .sample(id: id, name: draft.name, description: draft.description, role: .admin)
     }
-
     func delete(_ id: UUID) async throws {
         if let error { throw error }
         deletedIds.append(id)
+    }
+
+    private(set) var boardRequests = 0
+
+    func board(_ id: UUID) async throws -> Board {
+        boardRequests += 1
+        if let error { throw error }
+        guard let board = boards.first(where: { $0.id == id }) else {
+            throw APIError.notFound("Board not found")
+        }
+        return board
     }
 }
 
