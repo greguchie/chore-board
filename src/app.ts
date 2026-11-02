@@ -18,6 +18,7 @@ import { boardInvitesRouter, invitesRouter } from "./routes/invites.js";
 import { membersRouter } from "./routes/members.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { usersRouter } from "./routes/users.js";
+import { httpLogger } from './http-logger.js';
 
 export const app = express();
 
@@ -35,6 +36,7 @@ if (config.NODE_ENV !== "production") {
     swaggerUi.setup(openApiDocument),
   );
 }
+app.use(httpLogger);
 
 // Everything else: full security headers + a global rate limit.
 app.use(helmet());
@@ -81,7 +83,7 @@ app.use((_req, res) => {
 // Central error handler: map known problems to clear 4xx responses;
 // anything unexpected is logged here and returned as a generic 500
 // so internal details never reach the client.
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   const { code, type } = err as { code?: string; type?: string };
   if (type === "entity.parse.failed") {
     res.status(400).json({ error: "Malformed JSON" });
@@ -105,6 +107,6 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     res.status(400).json({ error: "Invalid input" });
     return;
   }
-  console.error(err);
-  res.status(500).json({ error: "Internal server error" });
+  req.log.error({ err }, 'Unhandled error');
+  res.status(500).json({ error: "Internal server error", requestId: req.id });
 });

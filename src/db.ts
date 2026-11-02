@@ -1,5 +1,6 @@
 import pg from "pg";
 import { config } from "./config.js";
+import { logger } from './logger.js';
 
 export const pool = new pg.Pool({
   connectionString: config.DATABASE_URL,
@@ -9,5 +10,5 @@ export const pool = new pg.Pool({
 // Without this listener Node treats the 'error' event as unhandled and
 // crashes the whole server. The pool replaces the broken connection.
 pool.on("error", (err) => {
-  console.error("Unexpected database pool error:", err.message);
+  logger.error({ err }, 'Unexpected database pool error');
 });

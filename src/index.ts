@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { app } from "./app.js";
+import { logger } from './logger.js';
 
 app.listen(config.PORT, () => {
-  console.log(`API listening on http://localhost:${config.PORT}`);
+  logger.info({ port: config.PORT }, 'API listening');
 });
