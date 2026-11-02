@@ -20,11 +20,13 @@ const envSchema = z.object({
   RATE_LIMIT_API_MAX: z.coerce.number().int().positive().default(300), // per 15 min
   RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().positive().default(5), // failed, per 15 min
   RATE_LIMIT_SIGNUP_MAX: z.coerce.number().int().positive().default(10), // per hour
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info')
 });
 
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
+  // Intentionally console: the logger depends on this config, so it can't exist yet.
   console.error("Invalid environment configuration:");
   for (const issue of parsed.error.issues) {
     // Prints the variable name and the problem, never the secret value.

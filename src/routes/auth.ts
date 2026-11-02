@@ -107,8 +107,9 @@ authRouter.post("/refresh", async (req, res) => {
         [current.familyId],
       );
       await client.query("COMMIT");
-      console.warn(
-        `Refresh token reuse detected for user ${current.userId}; session revoked`,
+      req.log.warn(
+        { userId: current.userId, event: 'refresh_token_reuse' },
+        'Refresh token reuse detected; session revoked',
       );
       res.status(401).json({ error: "Invalid refresh token" });
       return;

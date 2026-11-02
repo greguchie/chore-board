@@ -28,7 +28,7 @@ export const loginLimiter = rateLimit({
   skipSuccessfulRequests: true,
   message: { error: "Too many failed login attempts, try again in 15 minutes" },
   handler: (req, res, _next, options) => {
-    console.warn(`Login rate limit reached for IP ${req.ip}`);
+    req.log.warn({ ip: req.ip }, 'Login rate limit reached');
     res.status(options.statusCode).json(options.message);
   },
 });
