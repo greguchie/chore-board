@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Chore Board API
-  version: 2.0.0
+  version: 2.1.0
   description: >
     REST API for chore-board: users, boards, board members and tasks.
     Most endpoints need a bearer access token from POST /auth/login.
@@ -26,6 +26,8 @@ tags:
     description: Who is on a board and their role
   - name: Tasks
     description: Chores on a board
+  - name: Invites
+    description: Invite links for joining a board
 
 paths:
   /health:
@@ -458,6 +460,57 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /boards/{boardId}/invites:
+    parameters:
+      - $ref: "#/components/parameters/BoardId"
+    post:
+      tags: [Invites]
+      operationId: createInvite
+      summary: Create an invite link (owner or admin; only the owner can invite admins)
+      description: >
+        Returns a random token and an app link (choreboard://invite/TOKEN).
+        The token is shown only once; the server stores only its SHA-256 hash.
+        Valid for 7 days and can be used by several people.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateInvite" }
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invite" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /invites/accept:
+    post:
+      tags: [Invites]
+      operationId: acceptInvite
+      summary: Join a board with an invite token
+      description: >
+        Adds the caller to the board with the invite's role and returns the board.
+        If the caller is already a member, their role is unchanged. The token goes
+        in the body rather than the URL so it stays out of access logs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AcceptInvite" }
+      responses:
+        "200":
+          description: The board you joined
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Board" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        
 components:
   securitySchemes:
     bearerAuth:
@@ -718,3 +771,25 @@ components:
         status: { $ref: "#/components/schemas/TaskStatus" }
         assigneeId: { type: string, format: uuid, nullable: true }
         dueDate: { type: string, format: date, nullable: true }
+    CreateInvite:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [admin, member]
+          default: member
+
+    Invite:
+      type: object
+      properties:
+        token: { type: string, description: Shown only once; only its hash is stored }
+        url: { type: string, example: "choreboard://invite/EXAMPLE_TOKEN" }
+        role: { type: string, enum: [admin, member] }
+        boardId: { type: string, format: uuid }
+        expiresAt: { type: string, format: date-time }
+
+    AcceptInvite:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, minLength: 1, maxLength: 200 }

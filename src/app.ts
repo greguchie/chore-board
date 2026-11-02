@@ -14,6 +14,7 @@ import {
 } from "./middleware/rateLimit.js";
 import { authRouter } from "./routes/auth.js";
 import { boardsRouter } from "./routes/boards.js";
+import { boardInvitesRouter, invitesRouter } from "./routes/invites.js";
 import { membersRouter } from "./routes/members.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { usersRouter } from "./routes/users.js";
@@ -65,7 +66,10 @@ app.use(
   membersRouter,
 );
 app.use("/boards/:boardId/tasks", requireAuth, requireBoardMember, tasksRouter);
+app.use("/boards/:boardId/invites", requireAuth, requireBoardMember, boardInvitesRouter);
 
+// Joining by invite: must be logged in, but not yet a member.
+app.use("/invites", requireAuth, invitesRouter);
 // Boards: must be logged in; each route checks membership and role itself.
 app.use("/boards", requireAuth, boardsRouter);
 
