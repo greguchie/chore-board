@@ -3,12 +3,20 @@ import SwiftUI
 struct BoardDetailView: View {
     @State private var viewModel: TasksViewModel
     @State private var sheet: TaskSheet?
+    @State private var showInvite = false
     private let service: any TasksProviding
+    private let invites: (any InvitesProviding)?
 
-    init(board: Board, service: any TasksProviding, cache: (any OfflineCaching)? = nil) {
+    init(board: Board, service: any TasksProviding,
+         cache: (any OfflineCaching)? = nil, invites: (any InvitesProviding)? = nil) {
         self.service = service
+        self.invites = invites
         _viewModel = State(initialValue: TasksViewModel(board: board, service: service, cache: cache))
     }
+
+    /// Owners and admins can invite people, matching the server's rule.
+    private var canInvite: Bool { invites != nil && viewModel.board.myRole.canEditBoard }
+
     var body: some View {
         content
             .navigationTitle(viewModel.board.name)
@@ -19,11 +27,24 @@ struct BoardDetailView: View {
                     }
                     .disabled(viewModel.state != .loaded)
                 }
+                if canInvite {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showInvite = true } label: {
+                            Label("Invite people", systemImage: "person.badge.plus")
+                        }
+                    }
+                }
             }
             .sheet(item: $sheet) { sheet in
                 TaskEditorView(service: service, boardId: viewModel.board.id,
                                members: viewModel.members, existing: sheet.task) { saved in
                     viewModel.upsert(saved)
+                }
+            }
+            .sheet(isPresented: $showInvite) {
+                if let invites {
+                    InviteSheet(boardId: viewModel.board.id, boardName: viewModel.board.name,
+                                service: invites)
                 }
             }
             .alert("Something went wrong",
@@ -59,7 +80,8 @@ struct BoardDetailView: View {
                     Section { OfflineBanner(cachedAt: viewModel.cachedAt) }
                 }
                 Section {
-                    if let description = viewModel.board.description, !description.isEmpty {                        Text(description)
+                    if let description = viewModel.board.description, !description.isEmpty {
+                        Text(description)
                             .foregroundStyle(.secondary)
                     }
                     LabeledContent("Your role") {

@@ -3,6 +3,7 @@ import SwiftUI
 struct BoardsListView: View {
     @Environment(AuthSession.self) private var session
     @Environment(AppRouter.self) private var router
+    @Environment(DeepLinkHandler.self) private var deepLinks
     @State private var viewModel: BoardsViewModel
     @State private var sheet: BoardSheet?
     @State private var boardToDelete: Board?
@@ -10,11 +11,14 @@ struct BoardsListView: View {
     private let service: any BoardsProviding
     private let tasksService: any TasksProviding
     private let cache: any OfflineCaching
+    private let invites: any InvitesProviding
 
-    init(service: any BoardsProviding, tasksService: any TasksProviding, cache: any OfflineCaching) {
+    init(service: any BoardsProviding, tasksService: any TasksProviding,
+         cache: any OfflineCaching, invites: any InvitesProviding) {
         self.service = service
         self.tasksService = tasksService
         self.cache = cache
+        self.invites = invites
         _viewModel = State(initialValue: BoardsViewModel(service: service, cache: cache))
     }
 
@@ -67,6 +71,10 @@ struct BoardsListView: View {
                     try? await session.loadCurrentUser()
                 }
             }
+            // A board joined from an invite link appears in the list right away.
+            .onChange(of: deepLinks.lastJoinedBoard) { _, board in
+                if let board { viewModel.upsert(board) }
+            }
     }
 
     /// The one place routes become screens.
@@ -78,7 +86,8 @@ struct BoardsListView: View {
                            cached: viewModel.boards.first { $0.id == id },
                            boardsService: service,
                            tasksService: tasksService,
-                           cache: cache)
+                           cache: cache,
+                           invites: invites)
         }
     }
 
