@@ -6,6 +6,7 @@ How the chore-board API is protected, mapped to the OWASP Top 10:2025, plus know
 
 - **Authentication:** email + password (scrypt with a random salt per user). Short-lived access tokens (HS256 JWT, 15 minutes) and long-lived refresh tokens (32 random bytes, stored only as SHA-256 hashes, rotated on every use with reuse detection).
 - **Authorization:** every route except sign-up, login, refresh, logout and health requires a bearer token. Board data requires membership; actions are limited by role (owner / admin / member).
+- **Invite links:** 32 random bytes, stored only as SHA-256 hashes, valid for 7 days; accepted via the request body (not the URL) so tokens stay out of logs; accepting never changes an existing member's role.
 - **Input:** zod schemas validate every body, path and query parameter; unknown fields are dropped; JSON bodies are capped at 10 KB.
 - **Abuse:** per-IP rate limits on failed logins, sign-ups and overall traffic.
 - **Headers:** helmet adds a content-security policy, HSTS, clickjacking and MIME-sniffing protection, and removes `X-Powered-By`.

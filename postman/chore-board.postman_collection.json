@@ -2064,6 +2064,398 @@
       ]
     },
     {
+      "name": "8b. Invites",
+      "item": [
+        {
+          "name": "Non-member can't create invites",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/boards/{{boardId}}/invites"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"error is: Board not found\", () => pm.expect(pm.response.json().error).to.eql(\"Board not found\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Owner creates an invite link",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/boards/{{boardId}}/invites"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"defaults to member\", () => { pm.expect(pm.response.json().role).to.eql(\"member\"); });",
+                  "pm.test(\"app link contains the token\", () => { const r = pm.response.json(); pm.expect(r.url).to.eql(\"choreboard://invite/\" + r.token); });",
+                  "pm.test(\"expires in about 7 days\", () => { const days = (new Date(pm.response.json().expiresAt) - Date.now()) / 86400000; pm.expect(days).to.be.within(6.9, 7.1); });",
+                  "pm.collectionVariables.set(\"inviteToken\", pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Accepting needs a login",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/invites/accept",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{inviteToken}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing token is rejected",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/invites/accept",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown token is rejected",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/invites/accept",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"not-a-real-invite\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"error is: This invite link is invalid or has expired\", () => pm.expect(pm.response.json().error).to.eql(\"This invite link is invalid or has expired\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Member joins with the invite",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/invites/accept",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{inviteToken}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"joined the right board\", () => { pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get(\"boardId\")); });",
+                  "pm.test(\"joined as member\", () => { pm.expect(pm.response.json().myRole).to.eql(\"member\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Accepting again is harmless",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/invites/accept",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{inviteToken}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"still a member\", () => { pm.expect(pm.response.json().myRole).to.eql(\"member\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Joined member can see the board",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/boards/{{boardId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Members can't create invites",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{memberToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/boards/{{boardId}}/invites"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error is: Your role on this board doesn't allow this\", () => pm.expect(pm.response.json().error).to.eql(\"Your role on this board doesn't allow this\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "An invite never changes an existing role",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/invites/accept",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{inviteToken}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"still owner\", () => { pm.expect(pm.response.json().myRole).to.eql(\"owner\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Owner can create an admin invite",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{ownerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/boards/{{boardId}}/invites",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"admin invite\", () => { pm.expect(pm.response.json().role).to.eql(\"admin\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "9. Validation and errors",
       "item": [
         {

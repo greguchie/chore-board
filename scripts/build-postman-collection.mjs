@@ -376,6 +376,71 @@ const folders = [
     }),
   ]),
 
+    folder("8b. Invites", [
+    req("Non-member can't create invites", "POST", `${BOARD}/invites`, {
+      as: "memberToken",
+      tests: [status(404), errorIs("Board not found")],
+    }),
+    req("Owner creates an invite link", "POST", `${BOARD}/invites`, {
+      as: "ownerToken",
+      tests: [
+        status(201),
+        check("defaults to member", 'pm.expect(pm.response.json().role).to.eql("member");'),
+        check("app link contains the token",
+          'const r = pm.response.json(); pm.expect(r.url).to.eql("choreboard://invite/" + r.token);'),
+        check("expires in about 7 days",
+          "const days = (new Date(pm.response.json().expiresAt) - Date.now()) / 86400000; pm.expect(days).to.be.within(6.9, 7.1);"),
+        save("inviteToken", "pm.response.json().token"),
+      ],
+    }),
+    req("Accepting needs a login", "POST", "/invites/accept", {
+      body: { token: "{{inviteToken}}" },
+      tests: [status(401)],
+    }),
+    req("Missing token is rejected", "POST", "/invites/accept", {
+      as: "memberToken",
+      body: {},
+      tests: [status(400)],
+    }),
+    req("Unknown token is rejected", "POST", "/invites/accept", {
+      as: "memberToken",
+      body: { token: "not-a-real-invite" },
+      tests: [status(404), errorIs("This invite link is invalid or has expired")],
+    }),
+    req("Member joins with the invite", "POST", "/invites/accept", {
+      as: "memberToken",
+      body: { token: "{{inviteToken}}" },
+      tests: [
+        status(200),
+        check("joined the right board", `pm.expect(pm.response.json().id).to.eql(${v("boardId")});`),
+        check("joined as member", 'pm.expect(pm.response.json().myRole).to.eql("member");'),
+      ],
+    }),
+    req("Accepting again is harmless", "POST", "/invites/accept", {
+      as: "memberToken",
+      body: { token: "{{inviteToken}}" },
+      tests: [status(200), check("still a member", 'pm.expect(pm.response.json().myRole).to.eql("member");')],
+    }),
+    req("Joined member can see the board", "GET", BOARD, {
+      as: "memberToken",
+      tests: [status(200)],
+    }),
+    req("Members can't create invites", "POST", `${BOARD}/invites`, {
+      as: "memberToken",
+      tests: [status(403), errorIs(ROLE_FORBIDDEN)],
+    }),
+    req("An invite never changes an existing role", "POST", "/invites/accept", {
+      as: "ownerToken",
+      body: { token: "{{inviteToken}}" },
+      tests: [status(200), check("still owner", 'pm.expect(pm.response.json().myRole).to.eql("owner");')],
+    }),
+    req("Owner can create an admin invite", "POST", `${BOARD}/invites`, {
+      as: "ownerToken",
+      body: { role: "admin" },
+      tests: [status(201), check("admin invite", 'pm.expect(pm.response.json().role).to.eql("admin");')],
+    }),
+  ]),
+
   folder("9. Validation and errors", [
     req("Malformed JSON", "POST", "/auth/login", {
       raw: '{"email": broken',
