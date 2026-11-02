@@ -19,6 +19,7 @@ import { membersRouter } from "./routes/members.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { usersRouter } from "./routes/users.js";
 import { httpLogger } from './http-logger.js';
+import { redis } from "./redis.js";
 
 export const app = express();
 
@@ -47,8 +48,20 @@ app.use(apiLimiter);
 app.use(express.json({ limit: "10kb" }));
 
 app.get("/health", async (_req, res) => {
-  const result = await pool.query("select now() as time");
-  res.json({ status: "ok", dbTime: result.rows[0].time });
+  // Check both dependencies at the same time; one failing doesn't stop the other.
+  const [db, cache] = await Promise.allSettled([
+    pool.query("select now() as time"),
+    redis.ping(),
+  ]);
+  const dbOk = db.status === "fulfilled";
+  const redisOk = cache.status === "fulfilled";
+  const healthy = dbOk && redisOk;
+
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? "ok" : "degraded",
+    dbTime: dbOk ? db.value.rows[0].time : null,
+    redis: redisOk ? "ok" : "down",
+  });
 });
 
 // Extra limits on the endpoints attackers target most.

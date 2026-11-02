@@ -20,7 +20,8 @@ const envSchema = z.object({
   RATE_LIMIT_API_MAX: z.coerce.number().int().positive().default(300), // per 15 min
   RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().positive().default(5), // failed, per 15 min
   RATE_LIMIT_SIGNUP_MAX: z.coerce.number().int().positive().default(10), // per hour
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info')
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  REDIS_URL: z.string().url(),
 });
 
 const parsed = envSchema.safeParse(process.env);
