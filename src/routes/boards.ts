@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db.js";
+import { invalidateBoardTasks } from "../cache.js";
 
 export const boardsRouter = Router();
 
@@ -148,5 +149,6 @@ boardsRouter.delete("/:id", async (req, res) => {
     return;
   }
   await pool.query("DELETE FROM boards WHERE id = $1", [params.data.id]);
+  await invalidateBoardTasks(params.data.id); // CACHE: the board's tasks were deleted with it
   res.status(204).end();
 });

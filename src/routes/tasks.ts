@@ -2,6 +2,13 @@ import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db.js";
 import { requireRole } from "../middleware/auth.js";
+import {
+  cacheGetJson,
+  cacheSetJson,
+  cacheKeys,
+  invalidateBoardTasks,
+  TASKS_CACHE_TTL_SECONDS,
+} from "../cache.js";
 
 export const tasksRouter = Router({ mergeParams: true });
 
@@ -84,6 +91,7 @@ tasksRouter.post("/", async (req, res) => {
      VALUES ($1, $2, $3, $4, $5) RETURNING ${columns}`,
     [boardId, title, description ?? null, assigneeId ?? null, dueDate ?? null],
   );
+  await invalidateBoardTasks(boardId); // CACHE: the board's lists just changed
   res.status(201).json(rows[0]);
 });
 
@@ -95,6 +103,21 @@ tasksRouter.get("/", async (req, res) => {
     return;
   }
   const { boardId } = params.data;
+
+  // CACHE: only the common lists (all, or filtered by status) are cached.
+  // Membership was already checked by requireBoardMember before we get here,
+  // so a cached list is never shown to a non-member.
+  const cacheKey = query.data.assigneeId
+    ? null
+    : cacheKeys.boardTasks(boardId, query.data.status ?? "all");
+
+  if (cacheKey) {
+    const cached = await cacheGetJson<unknown[]>(cacheKey);
+    if (cached) {
+      res.set("X-Cache", "HIT").json(cached);
+      return;
+    }
+  }
 
   const board = await pool.query("SELECT 1 FROM boards WHERE id = $1", [boardId]);
   if (board.rows.length === 0) {
@@ -119,7 +142,11 @@ tasksRouter.get("/", async (req, res) => {
      ORDER BY t.created_at`,
     values,
   );
-  res.json(rows);
+
+  if (cacheKey) {
+    await cacheSetJson(cacheKey, rows, TASKS_CACHE_TTL_SECONDS);
+  }
+  res.set("X-Cache", cacheKey ? "MISS" : "BYPASS").json(rows);
 });
 
 tasksRouter.get("/:taskId", async (req, res) => {
@@ -182,6 +209,7 @@ tasksRouter.patch("/:taskId", async (req, res) => {
     res.status(404).json({ error: "Task not found" });
     return;
   }
+  await invalidateBoardTasks(boardId); // CACHE
   res.json(rows[0]);
 });
 
@@ -199,5 +227,6 @@ tasksRouter.delete("/:taskId", requireRole("owner", "admin"), async (req, res) =
     res.status(404).json({ error: "Task not found" });
     return;
   }
+  await invalidateBoardTasks(params.data.boardId); // CACHE
   res.status(204).end();
 });
