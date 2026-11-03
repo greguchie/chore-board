@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db.js";
 import { requireRole } from "../middleware/auth.js";
+import { invalidateBoardTasks } from "../cache.js";
 
 // The board-membership gate in app.ts runs before every route here,
 // so res.locals.boardRole is always set.
@@ -151,5 +152,6 @@ membersRouter.delete("/:memberId", async (req, res) => {
     memberId,
     boardId,
   ]);
+  await invalidateBoardTasks(boardId); // CACHE: ON DELETE SET NULL just cleared their task assignments
   res.status(204).end();
 });

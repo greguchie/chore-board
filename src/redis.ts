@@ -4,10 +4,23 @@ import { logger } from './logger.js';
 
 // One shared connection for the whole API (like the Postgres pool).
 export const redis = new Redis(config.REDIS_URL, {
-  // Fail a command after 2 retries instead of hanging the request
-  // if Redis is down. Callers decide what to do (e.g. skip the cache).
-  maxRetriesPerRequest: 2,
+  // A cache must never slow requests down. If Redis isn't connected,
+  // fail commands immediately instead of queueing them until it returns.
+  enableOfflineQueue: false,
+  maxRetriesPerRequest: 1,
+  connectTimeout: 2000,
 });
 
-redis.on('ready', () => logger.info('Redis connected'));
-redis.on('error', (err) => logger.error({ err }, 'Redis error'));
+// Log state changes only, not every reconnect attempt.
+let isDown = false;
+
+redis.on('ready', () => {
+  isDown = false;
+  logger.info('Redis connected');
+});
+
+redis.on('error', (err) => {
+  if (isDown) return;
+  isDown = true;
+  logger.error({ err }, 'Redis unavailable; reconnecting in the background');
+});
